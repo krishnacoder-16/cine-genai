@@ -1,0 +1,10 @@
+.env
+node_modules
+outputs
+.next
+.venv
+.env.local
+.env.production
+.env.development
+.env.test
+.env.example

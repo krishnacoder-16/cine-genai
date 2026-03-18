@@ -1,0 +1,67 @@
+/*
+  globals.css
+  -----------
+  This is the FIRST file Next.js loads. It does three things:
+    1. Pulls in all of Tailwind's utility classes
+    2. Sets the dark background for the whole app
+    3. Imports the Inter font from Google Fonts
+*/
+
+/* ── 1. Tailwind base layers ── */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── 2. Google Font ── */
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap");
+
+/* ── 3. Global reset / dark-theme base ── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: "Inter", sans-serif;
+  background-color: #0a0a0f;   /* very dark navy — matches brand.dark */
+  color: #e5e7eb;              /* light grey text */
+  min-height: 100vh;
+  /* Subtle radial glow in the top-left corner */
+  background-image:
+    radial-gradient(ellipse 80% 60% at 10% -10%, rgba(124, 58, 237, 0.15) 0%, transparent 70%),
+    radial-gradient(ellipse 60% 50% at 90% 100%, rgba(99, 102, 241, 0.10) 0%, transparent 70%);
+}
+
+/* ── 4. Reusable utility: gradient text ── */
+.gradient-text {
+  background: linear-gradient(135deg, #a78bfa 0%, #6366f1 50%, #22d3ee 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ── 5. Reusable utility: glowing gradient button ── */
+.btn-gradient {
+  background: linear-gradient(135deg, #7c3aed 0%, #6366f1 100%);
+  transition: opacity 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+.btn-gradient:hover {
+  opacity: 0.9;
+  transform: translateY(-2px);
+  box-shadow: 0 0 30px rgba(124, 58, 237, 0.5);
+}
+
+/* ── 6. Glass card effect ── */
+.glass-card {
+  background: rgba(19, 19, 26, 0.7);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(124, 58, 237, 0.2);
+  border-radius: 1rem;
+}
