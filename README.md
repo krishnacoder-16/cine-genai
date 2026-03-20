@@ -1,103 +1,144 @@
-# 🎬 CineGen AI
+# 🎬 CineGen AI – AI Cinematic Video Generator
 
-**CineGen AI** is an end-to-end, AI-powered web application that transforms simple text scripts into fully synchronized, cinematic video slideshows. 
+## 📸 Project Preview
 
-By leveraging advanced Large Language Models (LLMs) and diffusion image generation, the system intelligently splits your narrative into visual scenes, generates breathtaking imagery, creates voice narration, and stitches it all together with Hollywood-style camera effects and subtitles.
+### Video Generation Interface
+![CineGen UI Preview](frontend/assets/ui.jpeg)
 
----
+### Script Input
+![Script Input](frontend/assets/script.jpeg)
 
-## ✨ Features
-
-- **🧠 Intelligent Scene Direction**: Uses the **Groq API** (`llama-3.1-8b-instant`) to expand your short script into 5–7 rich, highly detailed cinematic scenes, automatically writing visual prompts and perfectly-timed subtitles.
-- **🎨 AI Image Generation**: Uses the **Hugging Face Inference API** (`FLUX.1-schnell`) to generate gorgeous, high-resolution (1280x720) images matching your selected visual style (Cinematic, Anime, Realistic, Sci-Fi, etc.).
-- **🗣️ Dynamic Narration**: Converts your scene subtitles into high-quality Text-to-Speech narration using **gTTS**.
-- **🎥 Cinematic Stitching**: Uses **MoviePy** to assemble the final video, injecting:
-  - **Ken Burns Effect**: Slow, continuous zoom on every image.
-  - **Smooth Transitions**: 0.5s crossfades between scenes.
-  - **Synced Timing**: Automatically guarantees the exact length of the video matches the narration audio track.
-  - **Subtitles**: Clean, bottom-pinned visual subtitles matching the spoken dialogue.
-  - **Background Music**: Auto-mixes ambient tracks (if provided) under the narration.
-- **💻 Modern UI**: A sleek, dark-themed **Next.js 14** frontend with responsive glassmorphism design.
+### Style Selection
+![Style Selection](frontend/assets/style.jpeg)
 
 ---
 
-## 🏗️ Architecture
-
-The application is split into a separated frontend and backend.
-
-### Frontend (`/frontend`)
-- **Framework**: Next.js 14 (App Router)
-- **Styling**: Tailwind CSS, PostCSS
-- **Core Components**: 
-  - `HeroSection` and `VideoPreview` (plays the final generated MP4 directly from the backend server)
-  - `ScriptInput` and `StyleSelector`
-
-### Backend (`/backend`)
-- **Framework**: FastAPI, Uvicorn
-- **AI Services**:
-  - `services/scene_director.py`: Single-shot LLM orchestration (Groq).
-  - `services/image_generator.py`: Text-to-image integration (HuggingFace).
-  - `services/voice_generator.py`: Text-to-speech integration (gTTS).
-  - `services/video_creator.py`: Video assembly, audio mixing, effects, rendering (MoviePy).
-- **Video Serving**: Mounts FastAPI `StaticFiles` securely to serve the `outputs/final_video.mp4` locally to the frontend.
+An **AI-Powered Video Generation App** built to transform simple text scripts into fully synchronized, cinematic video slideshows. 
+This project focuses on **complex AI orchestration**, including **LLM prompt engineering**, **diffusion image generation**, and **programmatic video editing**.
 
 ---
 
-## 🚀 Getting Started
+## 🚀 Features
 
-### Prerequisites
-- Node.js & npm (for the frontend)
-- Python 3.10+ (for the backend)
-- API Keys:
-  - **Groq API Key**: Get it [here](https://console.groq.com/keys)
-  - **Hugging Face Token**: Get it [here](https://huggingface.co/settings/tokens)
+### ✅ Level 1 – Core Architecture & UI
+- Clean, responsive glassmorphism interface with Next.js 14 & Tailwind CSS
+- Powerful FastAPI Python backend to handle heavy AI processing
+- Dynamic style selection (Cinematic, Anime, Realistic, Retro, etc.)
+- Real-time video preview and downloadable MP4 output
 
-### 1. Backend Setup
+### ✅ Level 2 – AI Orchestration (The "Scene Director")
+- **One-Shot LLM Pipeline**: Powered by the **Groq API** (`llama-3.1-8b-instant`)
+- Takes a raw script and intelligently splits it into 5–7 narrative scenes.
+- Automatically generates two perfectly synced outputs per scene:
+  - A highly detailed *Visual Prompt* for image generation.
+  - A concise *Subtitle* for on-screen text and voiceover.
 
-```bash
-# Navigate to the backend directory
-cd backend
+### ✅ Level 3 – Media Generation & Cinematic Stitching 
+- **AI Image Generation**: Powered by **Hugging Face** (`FLUX.1-schnell`) to generate gorgeous 1280x720 HD frames per scene.
+- **Dynamic Voiceover**: Converts subtitles into natural Text-to-Speech narration using **gTTS**.
+- **Cinematic Video Assembly**: Uses **MoviePy** to automatically stitch the video with:
+  - **Ken Burns Effect**: Slow, continuous zooms on every frame.
+  - **Crossfades**: Smooth 0.5s transitions linking scenes.
+  - **Perfect Syncing**: Mathematically syncs image durations so the final video exactly matches the generated audio length.
+  - **Subtitles**: Native Pillow-rendered subtitles pinned to the bottom.
 
-# Install python dependencies
-pip install -r requirements.txt
+---
 
-# Create a .env file and add your keys
-echo "GROQ_API_KEY=your_groq_key" > .env
-echo "HUGGINGFACE_API_KEY=your_hf_token" >> .env
+## 🧠 Key Design Decisions
+- **Decoupled Architecture**: Separating the Next.js frontend from the FastAPI backend ensures the heavy Python video-rendering load doesn't block the UI.
+- **Fallback Mechanisms**: Pillow placeholder images keep the pipeline running if external AI APIs rate-limit or fail.
+- **Robust Event Handling**: Safe, asynchronous endpoint fetching decoupled with custom React styling and states.
 
-# Start the FastAPI server
-python -m uvicorn main:app --reload --port 8000
+---
+
+## 📂 Project Structure
+
+```text
+cinegen-ai/
+│
+├── frontend/                 # Next.js UI
+│   ├── app/
+│   │   ├── generate/         # Main Generation View
+│   │   ├── globals.css       # Custom styles
+│   │   ├── layout.js         
+│   │   └── page.js           # Landing Page
+│   │
+│   ├── components/           # Reusable React UI 
+│   │   ├── GenerateButton.jsx
+│   │   ├── HeroSection.jsx
+│   │   ├── Loader.jsx      
+│   │   ├── Navbar.jsx      
+│   │   ├── ScriptInput.jsx 
+│   │   ├── StyleSelector.jsx 
+│   │   └── VideoPreview.jsx  
+│   │
+│   └── utils/                
+│       └── api.js            # FastAPI Connection
+│
+├── backend/                  # FastAPI & AI Logic
+│   ├── routes/               
+│   │   └── generate.py       # Main API Endpoint
+│   │
+│   ├── services/             # Core AI Modules
+│   │   ├── image_generator.py # Hugging Face Image API
+│   │   ├── llm_enhancer.py    # Legacy Prompt Enhancer
+│   │   ├── scene_director.py  # Groq LLM Orchestration
+│   │   ├── scene_splitter.py  # Legacy Scene Splitter
+│   │   ├── video_creator.py   # MoviePy Rendering Pipeline
+│   │   └── voice_generator.py # gTTS Audio Generation
+│   │
+│   ├── utils/                
+│   │   └── file_manager.py    # Disk I/O handlers
+│   │
+│   ├── outputs/              # Final rendered media destination
+│   ├── main.py               # Uvicorn Server Entry Point
+│   ├── requirements.txt      # Python Dependencies
+│   └── .env                  # Secure AI API Keys
+│
+└── README.md                 # Project documentation
 ```
 
-*The backend will be available at `http://localhost:8000`. You can view interactive API docs at `http://localhost:8000/docs`.*
+---
 
-### 2. Frontend Setup
+## 🛠️ Technologies Used
 
-```bash
-# Open a new terminal and navigate to the frontend directory
-cd frontend
-
-# Install dependencies (only needed once)
-npm install
-
-# Start the Next.js development server
-npm run dev
-```
-
-*The frontend will be available at `http://localhost:3000`.*
+- **Frontend**: Next.js 14, React, Tailwind CSS
+- **Backend Framework**: FastAPI, Uvicorn, Pydantic
+- **AI / LLM**: Groq API (`llama-3.1-8b-instant`), HuggingFace API (`FLUX.1-schnell`)
+- **Media Processing**: MoviePy, Pillow (PIL), gTTS (Google Text-to-Speech)
+- **API Requests**: `httpx`, `fetch`
 
 ---
 
-## 🛠️ Usage
+## 🧪 How to Run the Project
 
-1. Open `http://localhost:3000` in your web browser.
-2. Click **Start Generating**.
-3. Type a creative script. For best results, use multiple sentences describing different visual actions.
-   *Example: "A lone astronaut steps onto the dusty surface of Mars. A massive dust storm approaches on the horizon... "*
-4. Select a **Visual Style** (e.g., Cinematic or Sci-Fi).
-5. Click **Generate Video** and watch the terminal logs for progress. 
-   *(Note: The first Hugging Face generation might take ~30s due to cold-starts).*
-6. Watch, Download, or Share your finished video!
+1. **Clone the repository**
+   ```bash
+   git clone <repository-url>
+   cd cinegen-ai
+   ```
+
+2. **Backend Setup (.env & Python)**
+   Create a `.env` file in the `backend/` folder and add your API keys:
+   ```env
+   GROQ_API_KEY=your_groq_api_key_here
+   HUGGINGFACE_API_KEY=your_huggingface_token_here
+   ```
+   Install dependencies and start the server:
+   ```bash
+   cd backend
+   pip install -r requirements.txt
+   python -m uvicorn main:app --reload --port 8000
+   ```
+
+3. **Frontend Setup (Node.js)**
+   Open a new terminal, navigate to the frontend, and start the development server:
+   ```bash
+   cd frontend
+   npm install
+   npm run dev
+   ```
+   The frontend will start at `http://localhost:3000`.
 
 ---
 
