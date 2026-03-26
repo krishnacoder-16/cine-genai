@@ -1,110 +1,138 @@
-"""
-routes/generate.py
--------------------
-Defines the POST /generate-video endpoint.
+import asyncio
+import uuid
+import base64
+import pathlib
+from fastapi import APIRouter, BackgroundTasks
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 
-New pipeline using scene_director (replaces scene_splitter + llm_enhancer):
-  1. scene_director  → 5–7 scenes with visual_prompt + subtitle each
-  2. image_generator → one AI image per visual_prompt
-  3. voice_generator → narration audio from joined subtitles
-  4. video_creator   → cinematic video with audio + subtitle overlays
-"""
+from utils.progress_manager import (
+    create_job,
+    event_stream,
+    send_event,
+)
 
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
-
-from services.scene_director  import generate_cinematic_scenes
+from services.scene_director import generate_cinematic_scenes
 from services.image_generator import generate_images
 from services.voice_generator import generate_voice
-from services.video_creator   import create_video
+from services.video_creator import create_video
 
-# ── Router ───────────────────────────────────────────────────────────────────
-router = APIRouter(
-    prefix="",
-    tags=["Generate"],
-)
+router = APIRouter()
 
 
-# ── Request model ─────────────────────────────────────────────────────────────
 class GenerateRequest(BaseModel):
-    script: str = Field(
-        ...,
-        min_length=1,
-        max_length=2000,
-        description="The video script or scene description",
-        example="A lone astronaut walks across Mars at sunset. A dust storm rises on the horizon.",
+    script: str
+    style: str = "Cinematic"
+
+
+@router.post("/generate")
+async def start_generation(req: GenerateRequest, background_tasks: BackgroundTasks):
+    job_id = str(uuid.uuid4())
+    create_job(job_id)
+    background_tasks.add_task(_run_pipeline, job_id, req.script, req.style)
+    return {"job_id": job_id}
+
+
+@router.get("/progress/{job_id}")
+async def progress_stream(job_id: str):
+    return StreamingResponse(
+        event_stream(job_id),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
     )
-    style: str = Field(
-        ...,
-        description="Visual style identifier (e.g. cinematic, anime, realistic)",
-        example="cinematic",
-    )
 
 
-# ── Response model ────────────────────────────────────────────────────────────
-class GenerateResponse(BaseModel):
-    success:   bool
-    video_url: str
-    message:   str
-
-
-# ── POST /generate-video ──────────────────────────────────────────────────────
-@router.post(
-    "/generate-video",
-    response_model=GenerateResponse,
-    summary="Generate a cinematic video from a script",
-)
-async def generate_video(request: GenerateRequest):
-    """
-    Full AI video generation pipeline.
-
-    Step 1 — scene_director:
-        Single LLM call → 5–7 scenes, each with:
-          • visual_prompt  (rich prompt for image generation)
-          • subtitle       (short narration line)
-
-    Step 2 — image_generator:
-        Calls HuggingFace FLUX for each visual_prompt → scene_N.png
-
-    Step 3 — voice_generator:
-        Joins all subtitles → TTS narration.mp3 (synced to scenes)
-
-    Step 4 — video_creator:
-        Assembles cinematic slideshow — Ken Burns zoom, crossfade
-        transitions, subtitle overlays, narration audio.
-    """
+async def _run_pipeline(job_id: str, script: str, style: str):
     try:
-        # ── Step 1: Generate structured scenes via LLM ────────────────────
-        scenes = generate_cinematic_scenes(request.script, request.style)
-        # scenes is: [{"scene": N, "visual_prompt": "...", "subtitle": "..."}, ...]
+        # Step 1: Analyse script
+        await send_event(job_id, "status", {
+            "stage": "analysing",
+            "message": "Analysing script and splitting into scenes\u2026",
+            "progress": 5,
+        })
+
+        scenes = await asyncio.to_thread(generate_cinematic_scenes, script, style)
+        total_scenes = len(scenes)
+
+        await send_event(job_id, "scenes_ready", {
+            "total": total_scenes,
+            "scenes": [{"subtitle": s["subtitle"]} for s in scenes],
+            "progress": 10,
+        })
+
+        # Step 2: Generate images
+        # generate_images(enhanced_scenes: list[str], style: str) -> list[str]
+        await send_event(job_id, "status", {
+            "stage": "images",
+            "message": f"Generating {total_scenes} scene images\u2026",
+            "progress": 12,
+        })
 
         visual_prompts = [s["visual_prompt"] for s in scenes]
-        subtitles      = [s["subtitle"]      for s in scenes]
+        image_paths = await asyncio.to_thread(generate_images, visual_prompts, style)
 
-        print(f"[generate] {len(scenes)} scenes ready.")
+        for i, (img_path, scene) in enumerate(zip(image_paths, scenes)):
+            img_b64 = ""
+            try:
+                img_b64 = base64.b64encode(pathlib.Path(img_path).read_bytes()).decode()
+            except Exception:
+                pass
 
-        # ── Step 2: Generate one image per visual prompt ──────────────────
-        image_paths = generate_images(visual_prompts, request.style)
+            progress = 12 + int(((i + 1) / total_scenes) * 55)
+            await send_event(job_id, "scene_image", {
+                "index": i,
+                "subtitle": scene["subtitle"],
+                "image_b64": img_b64,
+                "progress": progress,
+                "message": f"Scene {i + 1}/{total_scenes} image ready",
+            })
 
-        # ── Step 3: Generate narration from subtitles (not raw script) ────
-        # Using subtitles keeps narration tightly synced with what's on screen
-        narration_script = " ".join(subtitles)
-        audio_path       = generate_voice(narration_script)
+        # Step 3: Generate voiceover
+        # generate_voice(script: str) -> str
+        await send_event(job_id, "status", {
+            "stage": "voice",
+            "message": "Generating voiceover narration\u2026",
+            "progress": 70,
+        })
 
-        # ── Step 4: Assemble final cinematic video ────────────────────────
-        video_url = create_video(
-            image_paths  = image_paths,
-            style        = request.style,
-            audio_path   = audio_path,
-            scene_texts  = subtitles,    # subtitle per scene overlay
+        subtitles = [s["subtitle"] for s in scenes]
+        audio_path = await asyncio.to_thread(generate_voice, " ".join(subtitles))
+
+        await send_event(job_id, "status", {
+            "stage": "voice",
+            "message": "Voiceover ready",
+            "progress": 78,
+        })
+
+        # Step 4: Assemble video
+        # create_video(image_paths, audio_path, subtitles, ...) -> str
+        await send_event(job_id, "status", {
+            "stage": "assembling",
+            "message": "Assembling final video with cinematic effects\u2026",
+            "progress": 80,
+        })
+
+        video_path = await asyncio.to_thread(
+            create_video, image_paths, style, audio_path, subtitles
         )
 
-        return GenerateResponse(
-            success   = True,
-            video_url = video_url,
-            message   = f"Video generated successfully with {len(scenes)} scenes!",
-        )
+        # Step 5: Done
+        filename = pathlib.Path(video_path).name
+        download_url = f"/outputs/{filename}"
 
-    except Exception as e:
-        print(f"[generate] ❌ Pipeline error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        await send_event(job_id, "complete", {
+            "stage": "complete",
+            "message": "Your video is ready!",
+            "progress": 100,
+            "download_url": download_url,
+        })
+
+    except Exception as exc:
+        await send_event(job_id, "error", {
+            "stage": "error",
+            "message": f"Generation failed: {str(exc)}",
+            "progress": 0,
+        })
