@@ -1,72 +1,140 @@
-/*
-  app/generate/page.js  (route: "/generate")
-  -------------------------------------------
-  This is the BRAIN of the generate feature.
+"use client";
 
-  ── WHY all state lives HERE (lifted state) ──
-  React data flows one way: parent → child via props.
-  All components on this page (ScriptInput, StyleSelector etc.)
-  need to share the same data, so we store it in ONE place — here.
-  Each child gets what it needs as a prop.
-
-  ── State variables ──
-  • script    → what the user typed in the textarea
-  • style     → which visual style card they selected
-  • loading   → true while the mock API call is running
-  • videoUrl  → the result URL once generation is "done"
-
-  ── Flow ──
-  User types → script state updates
-  User picks style → style state updates
-  User clicks Generate:
-    1. loading = true   (shows <Loader />)
-    2. calls generateVideo() from utils/api.js (waits 3 seconds)
-    3. loading = false, videoUrl = result  (shows <VideoPreview />)
-*/
-
-"use client"; // ← needed because we use useState and handle events
-
-import { useState } from "react";
+import { useState, useRef } from "react";
 import ScriptInput from "@/components/ScriptInput";
 import StyleSelector from "@/components/StyleSelector";
 import GenerateButton from "@/components/GenerateButton";
-import Loader from "@/components/Loader";
 import VideoPreview from "@/components/VideoPreview";
-import { generateVideo } from "@/utils/api";
+import GenerationProgress from "@/components/GenerationProgress";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 export default function GeneratePage() {
-    // ── All state lives here (lifted) ──────────────────────────────
-    const [script, setScript] = useState("");          // user's prompt text
-    const [style, setStyle] = useState("cinematic"); // default style
-    const [loading, setLoading] = useState(false);       // is API call in flight?
-    const [videoUrl, setVideoUrl] = useState(null);        // result from API
-    const [error, setError] = useState(null);        // any error message
+    // ── Existing state (unchanged) ──────────────────────────────────
+    const [script, setScript]   = useState("");
+    const [style, setStyle]     = useState("cinematic");
+    const [loading, setLoading] = useState(false);
+    const [videoUrl, setVideoUrl] = useState(null);
+    const [error, setError]     = useState(null);
 
-    // ── Handle the Generate button click ───────────────────────────
+    // ── New SSE progress state ──────────────────────────────────────
+    const [progress, setProgress]         = useState(0);
+    const [statusMessage, setStatusMessage] = useState("");
+    const [stage, setStage]               = useState("idle");
+    const [sceneList, setSceneList]       = useState([]);   // [{ subtitle, imageUrl, ready }]
+
+    const esRef = useRef(null); // holds the EventSource so we can cancel it
+
+    // ── Handle Generate button click ────────────────────────────────
     async function handleGenerate() {
-        // Guard: don't generate if script is empty
         if (!script.trim()) {
             setError("Please enter a video script before generating.");
             return;
         }
 
-        // Reset previous results and start loading
+        // Reset everything
         setError(null);
         setVideoUrl(null);
+        setSceneList([]);
+        setProgress(0);
+        setStage("idle");
+        setStatusMessage("");
         setLoading(true);
 
+        // ── Step 1: POST to kick off the job, get back a job_id ─────
+        let jobId;
         try {
-            // Call the real FastAPI backend via utils/api.js
-            const data = await generateVideo({ script, style });
-            // data.video_url comes from the backend response
-            setVideoUrl(data.video_url);
+            const res = await fetch(`${API_BASE}/generate`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ script, style }),
+            });
+            if (!res.ok) throw new Error("Failed to start generation.");
+            ({ job_id: jobId } = await res.json());
         } catch (err) {
-            // Show the actual error message from the API (or a fallback)
-            setError(err.message || "Something went wrong. Please try again.");
-        } finally {
-            // Always stop the loader, whether success or error
+            setError(err.message || "Could not reach the server.");
             setLoading(false);
+            return;
         }
+
+        // ── Step 2: Open SSE stream for live progress ───────────────
+        const es = new EventSource(`${API_BASE}/progress/${jobId}`);
+        esRef.current = es;
+
+        // Generic stage / status updates
+        es.addEventListener("status", (e) => {
+            const d = JSON.parse(e.data);
+            setStage(d.stage);
+            setStatusMessage(d.message);
+            setProgress(d.progress);
+        });
+
+        // LLM finished — we now know the scene list
+        es.addEventListener("scenes_ready", (e) => {
+            const d = JSON.parse(e.data);
+            setSceneList(
+                d.scenes.map((s) => ({ subtitle: s.subtitle, imageUrl: null, ready: false }))
+            );
+            setProgress(d.progress);
+            setStatusMessage(`Script split into ${d.total} scenes`);
+        });
+
+        // One image is ready — update just that scene card
+        es.addEventListener("scene_image", (e) => {
+            const d = JSON.parse(e.data);
+            setSceneList((prev) => {
+                const updated = [...prev];
+                if (updated[d.index]) {
+                    updated[d.index] = {
+                        ...updated[d.index],
+                        imageUrl: d.image_b64
+                            ? `data:image/jpeg;base64,${d.image_b64}`
+                            : null,
+                        ready: true,
+                    };
+                }
+                return updated;
+            });
+            setProgress(d.progress);
+            setStatusMessage(d.message);
+        });
+
+        // All done — show the video
+        es.addEventListener("complete", (e) => {
+            const d = JSON.parse(e.data);
+            setProgress(100);
+            setStage("complete");
+            setStatusMessage(d.message);
+            // Append cache-buster so the browser doesn't serve a stale file
+            setVideoUrl(`${API_BASE}${d.download_url}?v=${Date.now()}`);
+            setLoading(false);
+            es.close();
+        });
+
+        // Server-sent error
+        es.addEventListener("error", (e) => {
+            let msg = "Generation failed. Please try again.";
+            try { msg = JSON.parse(e.data).message; } catch {}
+            setError(msg);
+            setLoading(false);
+            es.close();
+        });
+
+        // Network / connection error
+        es.onerror = () => {
+            setError("Lost connection to server. Please try again.");
+            setLoading(false);
+            es.close();
+        };
+    }
+
+    // ── Cancel mid-generation ───────────────────────────────────────
+    function handleCancel() {
+        if (esRef.current) esRef.current.close();
+        setLoading(false);
+        setStage("idle");
+        setStatusMessage("");
+        setProgress(0);
     }
 
     return (
@@ -85,23 +153,12 @@ export default function GeneratePage() {
 
                 {/* ── Input Card ── */}
                 <div className="glass-card p-6 md:p-8 flex flex-col gap-7">
+                    <ScriptInput value={script} onChange={setScript} />
 
-                    {/* 1. Script input — value and setter passed as props */}
-                    <ScriptInput
-                        value={script}
-                        onChange={setScript}
-                    />
-
-                    {/* Divider */}
                     <div className="border-t border-[#2d2d3a]" />
 
-                    {/* 2. Style selector — selected value and setter passed as props */}
-                    <StyleSelector
-                        selectedStyle={style}
-                        onSelect={setStyle}
-                    />
+                    <StyleSelector selectedStyle={style} onSelect={setStyle} />
 
-                    {/* Error message (shown if script is empty or API fails) */}
                     {error && (
                         <div className="flex items-center gap-2 text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3">
                             <span>⚠️</span>
@@ -109,17 +166,22 @@ export default function GeneratePage() {
                         </div>
                     )}
 
-                    {/* 3. Generate button — disabled while loading */}
-                    <GenerateButton
-                        onClick={handleGenerate}
-                        disabled={loading}
-                    />
+                    <GenerateButton onClick={handleGenerate} disabled={loading} />
                 </div>
 
-                {/* ── Output Area ── */}
-                {/* Show Loader while generating, VideoPreview once done */}
-                {loading && <Loader />}
+                {/* ── Live Progress UI (replaces the old <Loader />) ── */}
+                {(loading || stage === "complete") && (
+                    <GenerationProgress
+                        stage={stage}
+                        statusMessage={statusMessage}
+                        progress={progress}
+                        sceneList={sceneList}
+                        onCancel={handleCancel}
+                        loading={loading}
+                    />
+                )}
 
+                {/* ── Video preview — same as before ── */}
                 {videoUrl && !loading && (
                     <VideoPreview
                         videoUrl={videoUrl}
@@ -127,6 +189,7 @@ export default function GeneratePage() {
                         style={style}
                     />
                 )}
+
             </div>
         </div>
     );
