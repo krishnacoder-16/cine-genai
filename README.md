@@ -110,7 +110,7 @@ cinegen-ai/
 │   │   └── voice_generator.py # gTTS Audio Generation
 │   │
 │   ├── utils/
-|   |   ├── progress_manager.py #                 
+|   |   ├── progress_manager.py # Handles real time tracking                
 │   │   └── file_manager.py    # Disk I/O handlers
 │   │
 │   ├── outputs/              # Final rendered media destination
