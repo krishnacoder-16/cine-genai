@@ -21,26 +21,45 @@ This project focuses on **complex AI orchestration**, including **LLM prompt eng
 ## 🚀 Features
 
 ### ✅ Level 1 – Core Architecture & UI
-- Clean, responsive glassmorphism interface with Next.js 14 & Tailwind CSS
-- Powerful FastAPI Python backend to handle heavy AI processing
-- Dynamic style selection (Cinematic, Anime, Realistic, Retro, etc.)
+- Modern glassmorphism cinematic interface built with Next.js 14 + Tailwind CSS
+- High-performance FastAPI backend for AI orchestration and media processing
+- Fully asynchronous API workflow for smooth generation experience
 - Real-time video preview and downloadable MP4 output
+- Instant video preview + downloadable MP4 export 
+- Modular architecture designed for future AI model swapping
 
 ### ✅ Level 2 – AI Orchestration (The "Scene Director")
 - **One-Shot LLM Pipeline**: Powered by the **Groq API** (`llama-3.1-8b-instant`)
 - Takes a raw script and intelligently splits it into 5–7 narrative scenes.
 - Automatically generates two perfectly synced outputs per scene:
   - A highly detailed *Visual Prompt* for image generation.
+  - Camera framing, lighting, mood, environment & cinematic tone included
   - A concise *Subtitle* for on-screen text and voiceover.
 
 ### ✅ Level 3 – Media Generation & Cinematic Stitching 
-- **AI Image Generation**: Powered by **Hugging Face** (`FLUX.1-schnell`) to generate gorgeous 1280x720 HD frames per scene.
-- **Dynamic Voiceover**: Converts subtitles into natural Text-to-Speech narration using **gTTS**.
+- **AI Image Generation**: Smart multi-provider generation pipeline
+1. Primary Generator — **Hugging Face** (`FLUX.1-schnell`) to generate gorgeous 1280x720 HD frames per scene.
+2. Automatic Fallback — **Stable Horde**. Activates automatically if Hugging Face fails.
+3. Future Expansion Ready as in Placeholder system prepared for additional providers.
+- **Dynamic Voiceover**:
+- Converts subtitles into natural Text-to-Speech narration using **gTTS**
+- Automatic audio merging across scenes
+- Natural storytelling pacing
 - **Cinematic Video Assembly**: Uses **MoviePy** to automatically stitch the video with:
   - **Ken Burns Effect**: Slow, continuous zooms on every frame.
   - **Crossfades**: Smooth 0.5s transitions linking scenes.
   - **Perfect Syncing**: Mathematically syncs image durations so the final video exactly matches the generated audio length.
   - **Subtitles**: Native Pillow-rendered subtitles pinned to the bottom.
+
+### ✅ Level 4 – Visual Consistency System (Experimental AI Research Feature)
+
+- Persistent character & object continuity across scenes
+- Shared visual identity maintained between generated frames
+- Seed locking & style embedding reuse
+- Character reference propagation between prompts
+- Scene memory system for visual coherence
+
+⚠️ Visual consistency across diffusion frames remains an industry-wide challenge — this project implements an experimental solution approaching commercial-grade workflows.
 
 ---
 
@@ -70,7 +89,8 @@ cinegen-ai/
 │   │   ├── Navbar.jsx      
 │   │   ├── ScriptInput.jsx 
 │   │   ├── StyleSelector.jsx 
-│   │   └── VideoPreview.jsx  
+│   │   └── VideoPreview.jsx
+|   |     
 │   │
 │   └── utils/                
 │       └── api.js            # FastAPI Connection
@@ -80,6 +100,8 @@ cinegen-ai/
 │   │   └── generate.py       # Main API Endpoint
 │   │
 │   ├── services/             # Core AI Modules
+|   |   ├── character_parser.py # Same character / same object across frames
+|   |   ├── consistency_engine.py # Visual consistency across scenes
 │   │   ├── image_generator.py # Hugging Face Image API
 │   │   ├── llm_enhancer.py    # Legacy Prompt Enhancer
 │   │   ├── scene_director.py  # Groq LLM Orchestration
@@ -87,7 +109,8 @@ cinegen-ai/
 │   │   ├── video_creator.py   # MoviePy Rendering Pipeline
 │   │   └── voice_generator.py # gTTS Audio Generation
 │   │
-│   ├── utils/                
+│   ├── utils/
+|   |   ├── progress_manager.py # Handles real time tracking                
 │   │   └── file_manager.py    # Disk I/O handlers
 │   │
 │   ├── outputs/              # Final rendered media destination
@@ -103,9 +126,9 @@ cinegen-ai/
 ## 🛠️ Technologies Used
 
 - **Frontend**: Next.js 14, React, Tailwind CSS
-- **Backend Framework**: FastAPI, Uvicorn, Pydantic
-- **AI / LLM**: Groq API (`llama-3.1-8b-instant`), HuggingFace API (`FLUX.1-schnell`)
-- **Media Processing**: MoviePy, Pillow (PIL), gTTS (Google Text-to-Speech)
+- **Backend Framework**: FastAPI, Uvicorn, Pydantic, Async HTTPX
+- **AI / LLM**: Groq API (`llama-3.1-8b-instant`), HuggingFace API (`FLUX.1-schnell`), Stable Horde
+- **Media Processing**: MoviePy, Pillow (PIL), gTTS (Google Text-to-Speech), FFmpeg
 - **API Requests**: `httpx`, `fetch`
 
 ---
@@ -123,6 +146,8 @@ cinegen-ai/
    ```env
    GROQ_API_KEY=your_groq_api_key_here
    HUGGINGFACE_API_KEY=your_huggingface_token_here
+   HORDE_API_KEY=your_key_here
+   ELEVENLABS_API_KEY=your_key_here
    ```
    Install dependencies and start the server:
    ```bash
